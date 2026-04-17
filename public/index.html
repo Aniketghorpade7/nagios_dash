@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nagios Live Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg0: #0d1117;
+    --bg1: #161b22;
+    --bg2: #21262d;
+    --bg3: #30363d;
+    --text1: #e6edf3;
+    --text2: #8b949e;
+    --text3: #6e7681;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --teal: #39d353;
+    --border: rgba(240,246,252,0.1);
+  }
+
+  body {
+    background: var(--bg0);
+    color: var(--text1);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── Top bar ─────────────────────────────────── */
+  .topbar {
+    background: var(--bg1);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar h1 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .topbar h1 span { font-size: 18px; }
+  .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text2); }
+  .live-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--bg2); padding: 4px 10px;
+    border-radius: 20px; border: 1px solid var(--border);
+  }
+  .pulse-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(0.8)} }
+
+  /* ── Alert banner ────────────────────────────── */
+  .alert-banner {
+    background: #3d0000;
+    border-bottom: 1px solid #6e1a1a;
+    padding: 8px 20px;
+    font-size: 12px;
+    color: #ffa198;
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  .alert-banner.show { display: flex; }
+  .alert-icon { font-size: 14px; }
+
+  /* ── Main grid ───────────────────────────────── */
+  .container { padding: 16px 20px; max-width: 1400px; margin: 0 auto; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+
+  /* ── Card ────────────────────────────────────── */
+  .card {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text2);
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* ── Status badge ────────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-ok   { background: #0d2b1d; color: var(--green); border: 1px solid #2d6a3f; }
+  .badge-warn { background: #2a1f00; color: var(--yellow); border: 1px solid #6a4f00; }
+  .badge-crit { background: #2d0a0a; color: var(--red); border: 1px solid #6a1a1a; }
+  .badge-unk  { background: var(--bg2); color: var(--text2); border: 1px solid var(--border); }
+
+  /* ── Stat cards ──────────────────────────────── */
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+  }
+  .stat-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 600; color: var(--text1); line-height: 1; }
+  .stat-sub   { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+  /* ── Device row ──────────────────────────────── */
+  .device-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .device-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .device-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--bg2); display: flex; align-items: center;
+    justify-content: center; font-size: 16px; flex-shrink: 0;
+  }
+  .device-info { flex: 1; min-width: 0; }
+  .device-name { font-size: 13px; font-weight: 600; }
+  .device-sub  { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .device-bar-wrap { height: 3px; background: var(--bg3); border-radius: 2px; margin-top: 5px; }
+  .device-bar { height: 3px; border-radius: 2px; transition: width 0.4s ease; }
+  .device-right { text-align: right; flex-shrink: 0; }
+  .device-pct { font-size: 13px; font-weight: 600; }
+
+  /* ── Chart wrapper ───────────────────────────── */
+  .chart-area { position: relative; height: 160px; }
+  .chart-label { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+
+  /* ── Service table ───────────────────────────── */
+  .svc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .svc-table th { text-align: left; color: var(--text2); font-weight: 500; padding: 0 0 8px 0; border-bottom: 1px solid var(--border); }
+  .svc-table td { padding: 7px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .svc-table tr:last-child td { border-bottom: none; }
+  .svc-table td:last-child { text-align: right; }
+
+  /* ── Connection error ────────────────────────── */
+  .conn-err {
+    display: none;
+    background: #1a1200;
+    border: 1px solid #6a4f00;
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: var(--yellow);
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .conn-err.show { display: block; }
+
+  @media (max-width: 768px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ─────────────────────────────────────── -->
+<div class="topbar">
+  <h1><span>📡</span> Nagios Live Dashboard</h1>
+  <div class="topbar-right">
+    <div class="live-badge">
+      <div class="pulse-dot" id="pollDot"></div>
+      <span id="pollStatus">Connecting...</span>
+    </div>
+    <span id="clockDisplay">--:--:--</span>
+  </div>
+</div>
+
+<!-- ── Alert banner ────────────────────────────────── -->
+<div class="alert-banner" id="alertBanner">
+  <span class="alert-icon">⚠</span>
+  <span id="alertText"></span>
+</div>
+
+<!-- ── Main content ────────────────────────────────── -->
+<div class="container">
+
+  <!-- Connection error box -->
+  <div class="conn-err" id="connErr">
+    ⚠ Cannot reach <code>/api/live</code>. Make sure <code>node server.js</code> is running on port 3000.
+  </div>
+
+  <!-- Row 1: Devices + Status totals -->
+  <div class="grid-2">
+
+    <div class="card">
+      <div class="card-title">Devices</div>
+
+      <div class="device-row">
+        <div class="device-icon">⇄</div>
+        <div class="device-info">
+          <div class="device-name">Router1 <span style="font-size:11px;color:var(--text3)">· 192.168.1.1</span></div>
+          <div class="device-sub">Core Router — SNMP monitored</div>
+          <div class="device-bar-wrap">
+            <div class="device-bar" id="r1Bar" style="width:0%;background:var(--blue)"></div>
+          </div>
+        </div>
+        <div class="device-right">
+          <div class="device-pct" id="r1Cpu">—</div>
+          <div style="margin-top:4px" id="r1Badge"><span class="badge badge-unk">UNKNOWN</span></div>
+        </div>
+      </div>
+
+      <div class="device-row">
+        <div class="device-icon">🖥</div>
+        <div class="device-info">
+          <div class="device-name">localhost <span style="font-size:11px;color:var(--text3)">· 127.0.0.1</span></div>
+          <div class="device-sub">Nagios host — NRPE monitored</div>
+          <div class="device-bar-wrap">
+            <div class="device-bar" id="lhBar" style="width:0%;background:var(--green)"></div>
+          </div>
+        </div>
+        <div class="device-right">
+          <div class="device-pct" id="lhLoad">—</div>
+          <div style="margin-top:4px" id="lhBadge"><span class="badge badge-unk">UNKNOWN</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Status Summary</div>
+      <div class="grid-3" style="margin-bottom:0">
+        <div class="stat-card" style="text-align:center">
+          <div class="stat-label">OK</div>
+          <div class="stat-value" id="totOk" style="color:var(--green)">—</div>
+        </div>
+        <div class="stat-card" style="text-align:center">
+          <div class="stat-label">Warning</div>
+          <div class="stat-value" id="totWarn" style="color:var(--yellow)">—</div>
+        </div>
+        <div class="stat-card" style="text-align:center">
+          <div class="stat-label">Critical</div>
+          <div class="stat-value" id="totCrit" style="color:var(--red)">—</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;font-size:11px;color:var(--text3)">
+        Last updated: <span id="lastUpdated">—</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Row 2: Live trend charts -->
+  <div class="grid-2" style="margin-bottom:16px">
+
+    <div class="card">
+      <div class="card-title">
+        Router1 — CPU Load (SNMP)
+        <span id="r1TrendStatus" class="badge badge-unk">—</span>
+      </div>
+      <div class="chart-area">
+        <canvas id="cpuChart" role="img" aria-label="Router1 CPU load over time">Router1 CPU load trend</canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        localhost — System Load Average
+        <span id="lhTrendStatus" class="badge badge-unk">—</span>
+      </div>
+      <div class="chart-area">
+        <canvas id="loadChart" role="img" aria-label="localhost load averages over time">localhost load average trend</canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Row 3: localhost metrics -->
+  <div class="grid-4">
+    <div class="stat-card">
+      <div class="stat-label">Disk Used</div>
+      <div class="stat-value" id="v-disk">—</div>
+      <div class="stat-sub" id="v-diskpct">— % of total</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Swap Free</div>
+      <div class="stat-value" id="v-swap">—</div>
+      <div class="stat-sub">MB available</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Processes</div>
+      <div class="stat-value" id="v-procs">—</div>
+      <div class="stat-sub">of 500 warn / 700 crit</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active Users</div>
+      <div class="stat-value" id="v-users">—</div>
+      <div class="stat-sub">logged in</div>
+    </div>
+  </div>
+
+  <!-- Row 4: Service table + Disk chart -->
+  <div class="grid-2">
+
+    <div class="card">
+      <div class="card-title">Service Status — localhost</div>
+      <table class="svc-table">
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Value</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>HTTP response time</td>
+            <td id="svc-httpTime">—</td>
+            <td><span id="svc-httpBadge" class="badge badge-unk">—</span></td>
+          </tr>
+          <tr>
+            <td>PING — Round Trip</td>
+            <td id="svc-rta">—</td>
+            <td><span id="svc-pingBadge" class="badge badge-ok">OK</span></td>
+          </tr>
+          <tr>
+            <td>PING — Packet Loss</td>
+            <td id="svc-loss">—</td>
+            <td><span id="svc-lossBadge" class="badge badge-ok">OK</span></td>
+          </tr>
+          <tr>
+            <td>SSH response time</td>
+            <td id="svc-ssh">—</td>
+            <td><span id="svc-sshBadge" class="badge badge-ok">OK</span></td>
+          </tr>
+          <tr>
+            <td>Swap usage</td>
+            <td id="svc-swapVal">—</td>
+            <td><span class="badge badge-ok">OK</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Disk Usage — Root Partition ( / )</div>
+      <div class="chart-area">
+        <canvas id="diskChart" role="img" aria-label="Disk used in MiB over time">Disk usage trend</canvas>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── Chart factory ─────────────────────────────────────────
+function makeLineChart(id, datasets) {
+  const ctx = document.getElementById(id);
+  return new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: datasets.length > 1, labels: { color: '#8b949e', font: { size: 11 }, boxWidth: 10, padding: 12 } } },
+      scales: {
+        x: { grid: { color: 'rgba(240,246,252,0.06)' }, ticks: { color: '#6e7681', font: { size: 10 }, maxTicksLimit: 8 } },
+        y: { grid: { color: 'rgba(240,246,252,0.06)' }, ticks: { color: '#6e7681', font: { size: 10 } }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+const cpuChart = makeLineChart('cpuChart', [
+  { label: 'CPU load', data: [], borderColor: '#58a6ff', borderWidth: 1.5, tension: 0.4, pointRadius: 0, fill: true, backgroundColor: 'rgba(88,166,255,0.08)' }
+]);
+
+const loadChart = makeLineChart('loadChart', [
+  { label: 'load1',  data: [], borderColor: '#fbbf24', borderWidth: 1.5, tension: 0.4, pointRadius: 0, fill: false },
+  { label: 'load5',  data: [], borderColor: '#f97316', borderWidth: 1, tension: 0.4, pointRadius: 0, fill: false, borderDash: [4,3] },
+  { label: 'load15', data: [], borderColor: '#ef4444', borderWidth: 1, tension: 0.4, pointRadius: 0, fill: false, borderDash: [2,4] }
+]);
+
+const diskChart = makeLineChart('diskChart', [
+  { label: 'Used MiB', data: [], borderColor: '#bc8cff', borderWidth: 1.5, tension: 0.4, pointRadius: 0, fill: true, backgroundColor: 'rgba(188,140,255,0.08)' }
+]);
+
+const MAX_POINTS = 20;
+
+function addPoint(chart, label, ...vals) {
+  chart.data.labels.push(label);
+  vals.forEach((v, i) => {
+    chart.data.datasets[i].data.push(v === null ? NaN : v);
+    if (chart.data.datasets[i].data.length > MAX_POINTS) chart.data.datasets[i].data.shift();
+  });
+  if (chart.data.labels.length > MAX_POINTS) chart.data.labels.shift();
+  chart.update('none');
+}
+
+// ── Badge helper ──────────────────────────────────────────
+function badgeHtml(status) {
+  const s = (status || 'UNKNOWN').toUpperCase();
+  const cls = s === 'OK' ? 'badge-ok' : s === 'WARNING' ? 'badge-warn' : s === 'CRITICAL' ? 'badge-crit' : 'badge-unk';
+  return `<span class="badge ${cls}">${s}</span>`;
+}
+function setBadge(id, status) {
+  document.getElementById(id).innerHTML = badgeHtml(status);
+}
+
+// ── Counters ──────────────────────────────────────────────
+function countStatuses(data) {
+  let ok = 0, warn = 0, crit = 0;
+  const r = data.router1, l = data.localhost;
+  const check = s => {
+    const u = (s || '').toUpperCase();
+    if (u === 'OK') ok++;
+    else if (u === 'WARNING') warn++;
+    else if (u === 'CRITICAL') crit++;
+  };
+  check(r.status);
+  check(l.status);
+  check(l.httpStatus);
+  return { ok, warn, crit };
+}
+
+// ── Clock ─────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clockDisplay').textContent =
+    new Date().toLocaleTimeString('en-GB', { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Main poll ─────────────────────────────────────────────
+async function fetchAndUpdate() {
+  const label = new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  let data;
+  try {
+    const res = await fetch('/api/live');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
+    document.getElementById('connErr').classList.remove('show');
+    document.getElementById('pollStatus').textContent = 'Live · 2s poll';
+    document.getElementById('pollDot').style.background = 'var(--green)';
+  } catch (e) {
+    document.getElementById('connErr').classList.add('show');
+    document.getElementById('pollStatus').textContent = 'Disconnected';
+    document.getElementById('pollDot').style.background = 'var(--red)';
+    return;
+  }
+
+  const r = data.router1;
+  const l = data.localhost;
+
+  // ── Alert banner
+  const crits = [];
+  if (r.status === 'CRITICAL') crits.push('Router1: ' + (r.cpuLoad === null ? 'CPU timed out' : 'CRITICAL'));
+  if (l.status === 'CRITICAL') crits.push('localhost: CRITICAL');
+  const banner = document.getElementById('alertBanner');
+  if (crits.length) {
+    document.getElementById('alertText').textContent = 'CRITICAL — ' + crits.join(' | ');
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+
+  // ── Device cards
+  const cpuVal = r.cpuLoad !== null ? r.cpuLoad.toFixed(2) : '—';
+  document.getElementById('r1Cpu').textContent = 'CPU ' + cpuVal;
+  document.getElementById('r1Bar').style.width = r.cpuLoad !== null ? Math.min(r.cpuLoad * 10, 100) + '%' : '0%';
+  setBadge('r1Badge', r.status);
+
+  const loadVal = l.load1 !== null ? l.load1.toFixed(2) : '—';
+  document.getElementById('lhLoad').textContent = 'Load ' + loadVal;
+  document.getElementById('lhBar').style.width = l.load1 !== null ? Math.min(l.load1 * 20, 100) + '%' : '0%';
+  setBadge('lhBadge', l.status);
+
+  // ── Status totals
+  const { ok, warn, crit } = countStatuses(data);
+  document.getElementById('totOk').textContent = ok;
+  document.getElementById('totWarn').textContent = warn;
+  document.getElementById('totCrit').textContent = crit;
+  document.getElementById('lastUpdated').textContent = data.lastUpdated ? new Date(data.lastUpdated).toLocaleTimeString() : '—';
+
+  // ── Trend charts
+  addPoint(cpuChart, label, r.cpuLoad);
+  addPoint(loadChart, label, l.load1, l.load5, l.load15);
+  addPoint(diskChart, label, l.diskUsedMiB);
+
+  setBadge('r1TrendStatus', r.status);
+  setBadge('lhTrendStatus', l.status);
+
+  // ── Metric cards
+  document.getElementById('v-disk').textContent  = l.diskUsedMiB !== null ? l.diskUsedMiB.toLocaleString() + ' MiB' : '—';
+  document.getElementById('v-diskpct').textContent = l.diskPct !== null ? l.diskPct.toFixed(1) + '% used' : '—';
+  document.getElementById('v-swap').textContent  = l.swapFreeMB !== null ? l.swapFreeMB.toLocaleString() : '—';
+  document.getElementById('v-procs').textContent = l.totalProcs !== null ? l.totalProcs : '—';
+  document.getElementById('v-users').textContent = l.activeUsers !== null ? l.activeUsers : '—';
+
+  // ── Service table
+  document.getElementById('svc-httpTime').textContent = l.httpTime !== null ? (l.httpTime * 1000).toFixed(1) + ' ms' : '—';
+  setBadge('svc-httpBadge', l.httpStatus || 'UNKNOWN');
+  document.getElementById('svc-rta').textContent  = l.pingRTA  !== null ? l.pingRTA.toFixed(3) + ' ms' : '—';
+  document.getElementById('svc-loss').textContent = l.pingLoss !== null ? l.pingLoss + '%' : '—';
+  document.getElementById('svc-ssh').textContent  = l.sshTime  !== null ? (l.sshTime * 1000).toFixed(1) + ' ms' : '—';
+  document.getElementById('svc-swapVal').textContent = l.swapFreeMB !== null ? l.swapFreeMB.toLocaleString() + ' MB free' : '—';
+
+  // colour ping badge by loss
+  const lossBadge = document.getElementById('svc-lossBadge');
+  lossBadge.textContent = (l.pingLoss !== null ? l.pingLoss : '?') + '%';
+  lossBadge.className = 'badge ' + (l.pingLoss > 60 ? 'badge-crit' : l.pingLoss > 20 ? 'badge-warn' : 'badge-ok');
+}
+
+fetchAndUpdate();
+setInterval(fetchAndUpdate, 2000);
+</script>
+</body>
+</html>
