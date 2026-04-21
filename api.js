@@ -105,7 +105,7 @@ export async function fetchLoad() {
 
 // Up/down status (1 = up, 0 = down)
 export async function fetchUpStatus() {
-  const data = await instantQuery('up{job="node_exporter"}')
+  const data = await instantQuery('up{job="nagios"}')
   return data.result.map(m => ({
     instance: m.metric.instance,
     up: m.value[1] === '1',
