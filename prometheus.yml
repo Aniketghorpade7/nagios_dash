@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  external_labels:
+    monitor: 'lab-monitor'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Lab machines — add your node IPs here
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets:
+          - 'lab-node-01:9100'
+          - 'lab-node-02:9100'
+          - 'lab-node-03:9100'
+          - 'lab-node-04:9100'
+          - 'lab-node-05:9100'
+        labels:
+          env: 'lab'
+    # Optional: relabel instance to short hostname
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+)(?::\d+)?'
+        replacement: '$1'
